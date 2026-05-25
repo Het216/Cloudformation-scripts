@@ -1,0 +1,115 @@
+# CloudFormation template version
+AWSTemplateFormatVersion: '2010-09-09'
+
+# Stack description shown in AWS Console
+Description: Simple Ubuntu EC2 Instance using CloudFormation
+
+
+# All AWS resources are defined inside Resources block
+Resources:
+
+
+  # ==========================================
+  # Security Group
+  # ==========================================
+
+  # Logical name of Security Group resource
+  EC2SecurityGroup:
+
+    # AWS resource type
+    Type: AWS::EC2::SecurityGroup
+
+    Properties:
+
+      # Description visible in AWS Console
+      GroupDescription: Allow SSH Access
+
+
+      # Inbound traffic rules
+      SecurityGroupIngress:
+
+
+        # Allow SSH traffic
+        - IpProtocol: tcp
+
+          # Start port
+          FromPort: 22
+
+          # End port
+          ToPort: 22
+
+          # Allow access from anywhere on internet
+          CidrIp: 0.0.0.0/0
+
+
+
+  # ==========================================
+  # EC2 Instance
+  # ==========================================
+
+  # Logical name of EC2 resource
+  MyEC2Instance:
+
+    # AWS EC2 instance resource type
+    Type: AWS::EC2::Instance
+
+    Properties:
+
+
+      # Dynamically fetch latest Ubuntu 22.04 AMI
+      # from AWS Systems Manager Parameter Store
+      ImageId: !Sub '{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}'
+
+
+      # EC2 machine type
+      # t3.micro = 2 vCPU burstable + 1GB RAM
+      InstanceType: t3.micro
+
+
+      # Existing EC2 key pair name
+      # Used for SSH login
+      KeyName: testing
+
+
+      # Attach security group to EC2
+      SecurityGroupIds:
+
+        # !Ref returns created Security Group ID
+        - !Ref EC2SecurityGroup
+
+
+      # Resource tags
+      Tags:
+
+
+        # EC2 instance name shown in console
+        - Key: Name
+
+          Value: testing
+
+
+
+# Export useful values after deployment
+Outputs:
+
+
+  # Output section logical name
+  InstanceId:
+
+    # Description shown in stack outputs
+    Description: EC2 Instance ID
+
+    # !Ref on EC2 returns instance ID
+    Value: !Ref MyEC2Instance
+
+
+
+  # Public IP output
+  PublicIP:
+
+    # Description shown in stack outputs
+    Description: Public IP Address
+
+    # !GetAtt fetches EC2 attribute
+    # PublicIp is EC2 generated public IP
+    Value: !GetAtt MyEC2Instance.PublicIp
