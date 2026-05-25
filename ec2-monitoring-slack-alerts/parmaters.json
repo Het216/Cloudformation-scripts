@@ -1,0 +1,10 @@
+[
+  {
+    "ParameterKey": "SlackWebhookUrl",
+    "ParameterValue": "Your Slack Webhook URL here"
+  },
+  {
+    "ParameterKey": "EC2InstanceId",
+    "ParameterValue": "Your EC2 Instance ID here"
+  }
+]
