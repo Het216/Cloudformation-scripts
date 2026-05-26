@@ -1,20 +1,20 @@
 # =========================================================
 # CloudFormation Template Version
 # =========================================================
-# Defines CloudFormation template format version
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: '2010-09-09'
+
 
 # =========================================================
 # Stack Description
 # =========================================================
-# Visible in CloudFormation Console
 Description: EC2 CloudWatch Slack Alert Infrastructure
 
+
 # =========================================================
-# Parameters Section
+# Parameters
 # =========================================================
-# User-provided inputs during stack deployment
 Parameters:
+
   SlackWebhookUrl:
     Type: String
     NoEcho: true
@@ -22,179 +22,194 @@ Parameters:
   EC2InstanceId:
     Type: AWS::EC2::Instance::Id
 
+
 # =========================================================
-# Resources Section
+# Resources
 # =========================================================
-# All AWS infrastructure resources are defined here
 Resources:
+
+
   # =========================================================
   # SNS Topic
   # =========================================================
-  # SNS acts as notification/event hub
-  # CloudWatch Alarm sends events here
-  # Lambda subscribes to this topic
   SlackAlertsTopic:
-    # AWS SNS Topic resource type
+
     Type: AWS::SNS::Topic
 
     Properties:
-      #  Actual SNS Topic name
+
       TopicName: !Sub ${AWS::StackName}-slack-alerts
+
+      Tags:
+
+        - Key: Project
+          Value: Monitoring
+
+        - Key: ManagedBy
+          Value: CloudFormation
+
+
+
 
   # =========================================================
   # IAM Role For Lambda
   # =========================================================
-  # Lambda needs permissions to run
-  # and write logs to CloudWatch
   SlackAlertLambdaRole:
-    # AWS IAM Role resource type
+
     Type: AWS::IAM::Role
 
     Properties:
-      # Actual IAM Role name
+
       RoleName: !Sub ${AWS::StackName}-slack-alert-role
 
-      # =====================================================
-      # Trust Policy
-      # =====================================================
-      # Defines WHO can use this role
-      # Here:
-      # Lambda service can assume this role
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+
+        Version: '2012-10-17'
 
         Statement:
+
           - Effect: Allow
 
-            # AWS Lambda service principal
             Principal:
+
               Service:
                 - lambda.amazonaws.com
 
-            # Permission to assume role
             Action:
               - sts:AssumeRole
 
-      # =====================================================
-      # Managed IAM Policies
-      # =====================================================
-      # Gives Lambda permission to:
-      # - create log groups
-      # - create log streams
-      # - write CloudWatch logs
+
       ManagedPolicyArns:
+
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+
+      Tags:
+
+        - Key: Project
+          Value: Monitoring
+
+        - Key: ManagedBy
+          Value: CloudFormation
+
+
+
 
   # =========================================================
   # Lambda Function
   # =========================================================
-  # Lambda receives SNS events
-  # formats Slack message
-  # sends webhook request to Slack
   SlackAlertLambda:
-    # AWS Lambda resource type
+
     Type: AWS::Lambda::Function
 
     Properties:
-      # Actual Lambda function name
+
       FunctionName: !Sub ${AWS::StackName}-slack-alert-handler
 
-      # Lambda runtime
       Runtime: nodejs20.x
 
-      # Lambda handler format:
-      # filename.functionName
-      #
-      # Means:
-      # index.js → handler()
       Handler: index.handler
 
-      # Attach IAM Role to Lambda
-      # !GetAtt fetches Role ARN
       Role: !GetAtt SlackAlertLambdaRole.Arn
 
-      # Maximum execution timeout
       Timeout: 15
 
-      # Limit concurrent executions to prevent overload
-      # ReservedConcurrentExecutions: 2 will uncomment this line and set concurrency limit to 2
+      MemorySize: 128
 
-      # =====================================================
-      # Environment Variables
-      # =====================================================
-      # Used for configuration/secrets
+      ReservedConcurrentExecutions: 2
+
+      Architectures:
+        - arm64
+
       Environment:
+
         Variables:
-          # Slack Incoming Webhook URL
-          # NOTE: never place secret hardcoded instead use parameters
+
           SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
 
-      # =====================================================
-      # Inline Lambda Code
-      # =====================================================
-      # CloudFormation directly deploys this code
-      # No S3 needed currently
-      # =====================================================
-      # Further Improvements can be made to load code from S3 for better maintainability
-      # =====================================================
-      # Replce ZipFile with S3Bucket and S3Key properties to load code from S3
-      #Sample S3 code loading:
-      # =====================================================
-      # Code:
-      #   S3Bucket: your-code-bucket
-      #   S3Key: path/to/your/lambda-code.zip
-      # =====================================================
-      # This allows for better code management and separation of infrastructure and application code
-      Code:
-        ZipFile: |
 
+      Code:
+
+        ZipFile: |
           const https = require('https');
           const { URL } = require('url');
 
           const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
-          // Alert styling configuration
+
+          // =================================================
+          // Alert Styling Configuration
+          // =================================================
           const ALARM_CONFIG = {
 
               ALARM: {
                   color: '#FF0000',
-                  emoji: '[CRITICAL]',
+                  emoji: ':red_circle:',
                   label: 'CRITICAL ALERT'
               },
 
               OK: {
                   color: '#36A64F',
-                  emoji: '[OK]',
+                  emoji: ':white_check_mark:',
                   label: 'RESOLVED'
               }
           };
 
 
-          // Extract AWS region from SNS ARN
+          // =================================================
+          // Extract AWS Region From SNS ARN
+          // =================================================
           function getRegionFromArn(arn) {
 
               try {
+
                   return arn.split(':')[3];
 
-              } catch {
-                  return 'us-east-1';
+              } catch (err) {
+
+                  return 'ap-south-1';
               }
           }
 
 
-          // Format timestamp
+          // =================================================
+          // Format Timestamp In IST
+          // =================================================
           function formatTimestamp(timestamp) {
 
               try {
-                  return new Date(timestamp).toISOString();
 
-              } catch {
+                  return new Date(timestamp).toLocaleString(
+                      'en-IN',
+                      {
+                          timeZone: 'Asia/Kolkata',
+
+                          year: 'numeric',
+
+                          month: 'short',
+
+                          day: '2-digit',
+
+                          hour: '2-digit',
+
+                          minute: '2-digit',
+
+                          second: '2-digit',
+
+                          hour12: true
+                      }
+                  ) + ' IST';
+
+              } catch (err) {
+
                   return timestamp;
               }
           }
 
 
-          // Build Slack message payload
+          // =================================================
+          // Build Slack Message Payload
+          // =================================================
           function buildSlackMessage(alarm) {
 
               // Ignore:
@@ -203,37 +218,42 @@ Resources:
                   alarm.previous_state === 'INSUFFICIENT_DATA' &&
                   alarm.state === 'OK'
               ) {
+
                   return null;
               }
 
               let config;
 
 
-              // Real resolved alert
+              // =================================================
+              // Alarm Resolved
+              // =================================================
               if (
                   alarm.previous_state === 'ALARM' &&
                   alarm.state === 'OK'
               ) {
 
                   config = ALARM_CONFIG.OK;
-
               }
 
-              // Critical alert
+              // =================================================
+              // Alarm Triggered
+              // =================================================
               else if (alarm.state === 'ALARM') {
 
                   config = ALARM_CONFIG.ALARM;
-
               }
 
-              // Ignore all other transitions
+              // Ignore Other Transitions
               else {
 
                   return null;
               }
 
 
+              // =================================================
               // CloudWatch Alarm Console Link
+              // =================================================
               const alarmLink =
                   `https://${alarm.region}.console.aws.amazon.com/cloudwatch/home` +
                   `?region=${alarm.region}#alarmsV2:alarm/${encodeURIComponent(alarm.alarm_name)}`;
@@ -247,84 +267,103 @@ Resources:
 
                       blocks: [
 
+                          // =================================================
+                          // Header
+                          // =================================================
                           {
-                              type: "header",
+                              type: 'header',
 
                               text: {
-                                  type: "plain_text",
+                                  type: 'plain_text',
 
                                   text:
-                                  `${config.emoji} ${config.label}: ${alarm.alarm_name}`,
+                                      `${config.emoji} ${config.label}: ${alarm.alarm_name}`,
 
                                   emoji: true
                               }
                           },
 
+
+                          // =================================================
+                          // Main Alarm Details
+                          // =================================================
                           {
-                              type: "section",
+                              type: 'section',
 
                               fields: [
 
                                   {
-                                      type: "mrkdwn",
+                                      type: 'mrkdwn',
 
                                       text:
-                                      `*Metric:*\\n${alarm.namespace} -> ${alarm.metric_name}`
+                                          `*Metric:*\n${alarm.namespace} → ${alarm.metric_name}`
                                   },
 
                                   {
-                                      type: "mrkdwn",
+                                      type: 'mrkdwn',
 
                                       text:
-                                      `*State Change:*\\n${alarm.previous_state} -> *${alarm.state}*`
+                                          `*State Change:*\n${alarm.previous_state} → *${alarm.state}*`
                                   },
 
                                   {
-                                      type: "mrkdwn",
+                                      type: 'mrkdwn',
 
                                       text:
-                                      `*Account ID:*\\n\\`${alarm.account_id}\\``
+                                          `*Account ID:*\n\`${alarm.account_id}\``
                                   },
 
                                   {
-                                      type: "mrkdwn",
+                                      type: 'mrkdwn',
 
                                       text:
-                                      `*Time:*\\n${formatTimestamp(alarm.timestamp)}`
+                                          `*Time:*\n${formatTimestamp(alarm.timestamp)}`
                                   }
                               ]
                           },
 
+
+                          // =================================================
+                          // Description
+                          // =================================================
                           {
-                              type: "section",
+                              type: 'section',
 
                               text: {
-                                  type: "mrkdwn",
+                                  type: 'mrkdwn',
 
                                   text:
-                                  `*Description:*\\n${alarm.description}`
+                                      `*Description:*\n${alarm.description}`
                               }
                           },
 
+
+                          // =================================================
+                          // Reason
+                          // =================================================
                           {
-                              type: "section",
+                              type: 'section',
 
                               text: {
-                                  type: "mrkdwn",
+                                  type: 'mrkdwn',
 
                                   text:
-                                  `*Reason:*\\n${alarm.reason}`
+                                      `*Reason:*\n${alarm.reason}`
                               }
                           },
 
+
+                          // =================================================
+                          // AWS Console Link
+                          // =================================================
                           {
-                              type: "section",
+                              type: 'section',
 
                               text: {
-                                  type: "mrkdwn",
+                                  type: 'mrkdwn',
 
                                   text:
-                                  `<${alarmLink}|[VIEW] View Alarm in AWS Console>`
+                                      `🔍 <${alarmLink}|View Alarm in AWS Console>`
                               }
                           }
                       ]
@@ -333,7 +372,9 @@ Resources:
           }
 
 
-          // Send message to Slack webhook
+          // =================================================
+          // Send Message To Slack
+          // =================================================
           function sendToSlack(payload) {
 
               return new Promise((resolve, reject) => {
@@ -361,40 +402,44 @@ Resources:
 
                       let responseBody = '';
 
-                      res.on('data', chunk => {
+                      res.on('data', (chunk) => {
+
                           responseBody += chunk;
                       });
 
-                      res.on('end', () => 
-                      {
 
-                        if (
-                            res.statusCode >= 200 &&
-                            res.statusCode < 300
-                        ) {
+                      res.on('end', () => {
 
-                            resolve(responseBody);
+                          if (
+                              res.statusCode >= 200 &&
+                              res.statusCode < 300
+                          ) {
 
-                        } else {
+                              resolve(responseBody);
 
-                            reject(
+                          } else {
 
-                                new Error(
+                              reject(
 
-                                    `Slack webhook failed: ${res.statusCode} ${responseBody}`
-                                )
-                            );
-                        }
-                    });
+                                  new Error(
+
+                                      `Slack webhook failed: ${res.statusCode} ${responseBody}`
+                                  )
+                              );
+                          }
+                      });
                   });
 
-                  // Request timeout protection
-                    req.setTimeout(5000, () => {
 
-                        req.destroy(
-                            new Error('Request timeout')
-                        );
-                    });
+                  // =================================================
+                  // Request Timeout Protection
+                  // =================================================
+                  req.setTimeout(5000, () => {
+
+                      req.destroy(
+                          new Error('Request timeout')
+                      );
+                  });
 
 
                   req.on('error', reject);
@@ -413,22 +458,44 @@ Resources:
           exports.handler = async (event) => {
 
               console.log(
-                  'Event received:',
-                  JSON.stringify(event, null, 2)
+                  `Records received: ${event.Records?.length || 0}`
               );
 
 
-              // SNS can batch multiple records
+              // =================================================
+              // SNS Can Batch Multiple Records
+              // =================================================
               for (const record of event.Records || []) {
 
                   const region =
                       getRegionFromArn(record.Sns.TopicArn);
 
-                  const message =
-                      JSON.parse(record.Sns.Message);
+
+                  // =================================================
+                  // Safe JSON Parsing
+                  // =================================================
+                  let message;
+
+                  try {
+
+                      message = JSON.parse(
+                          record.Sns.Message
+                      );
+
+                  } catch (err) {
+
+                      console.error(
+                          'Invalid SNS message JSON',
+                          err
+                      );
+
+                      continue;
+                  }
 
 
-                  // Extract CloudWatch Alarm details
+                  // =================================================
+                  // Extract Alarm Details
+                  // =================================================
                   const alarm = {
 
                       alarm_name:
@@ -467,11 +534,13 @@ Resources:
                   );
 
 
-                  // Create Slack payload
+                  // =================================================
+                  // Build Slack Payload
+                  // =================================================
                   const payload = buildSlackMessage(alarm);
 
 
-                  // Ignore unwanted transitions
+                  // Ignore Unwanted Transitions
                   if (!payload) {
 
                       console.log(
@@ -482,199 +551,213 @@ Resources:
                   }
 
 
-                  // Send Slack message
-                    let sent = false;
+                  // =================================================
+                  // Retry Slack Delivery
+                  // =================================================
+                  let sent = false;
 
-                    for (let i = 0; i < 3; i++) {
+                  for (let i = 0; i < 3; i++) {
 
-                        try {
+                      try {
 
-                            await sendToSlack(payload);
+                          await sendToSlack(payload);
 
-                            sent = true;
+                          sent = true;
 
-                            break;
+                          break;
 
-                        } catch (err) {
+                      } catch (err) {
 
-                            console.error(
-                                `Retry ${i + 1} failed`,
-                                err
-                            );
+                          console.error(
+                              `Retry ${i + 1} failed`,
+                              err
+                          );
 
-                            if (i === 2) {
-                                throw err;
-                            }
-                        }
-                    }
+                          // Small Delay Before Retry
+                          await new Promise(
+                              resolve => setTimeout(resolve, 1000)
+                          );
 
-                    if (!sent) {
+                          if (i === 2) {
 
-                        throw new Error(
-                            'Failed to send Slack alert'
-                        );
-                    }
+                              throw err;
+                          }
+                      }
+                  }
+
+
+                  if (!sent) {
+
+                      throw new Error(
+                          'Failed to send Slack alert'
+                      );
+                  }
 
 
                   console.log(
-                      ` Sent to Slack | Alarm: ${alarm.alarm_name}`
+                      `Sent to Slack | Alarm: ${alarm.alarm_name}`
                   );
               }
 
 
               return {
+
                   statusCode: 200,
+
                   body: 'OK'
               };
           };
 
-  # =========================================================
-  # CloudWatch Log Group
-  # =========================================================
-  # Controls Lambda log retention
-  # Prevents logs from staying forever
 
+      Tags:
+
+        - Key: Project
+          Value: Monitoring
+
+        - Key: ManagedBy
+          Value: CloudFormation
+
+
+
+
+  # =========================================================
+  # CloudWatch Log Retention
+  # =========================================================
   SlackAlertLogGroup:
+
     Type: AWS::Logs::LogGroup
 
-    DeletionPolicy: Delete
-
-    UpdateReplacePolicy: Delete
-
     Properties:
+
       LogGroupName: !Sub /aws/lambda/${SlackAlertLambda}
 
-      # Set log retention to 14 days to prevent indefinite storage and manage costs
       RetentionInDays: 14
+
+
+
 
   # =========================================================
   # SNS Subscription
   # =========================================================
-  # Connect SNS Topic -> Lambda
   SlackAlertsSubscription:
-    # AWS SNS Subscription resource type
+
     Type: AWS::SNS::Subscription
 
-    # Ensure Lambda permission is created before subscription
-    DependsOn: 
-        - LambdaInvokePermission
+    DependsOn:
+      - LambdaInvokePermission
 
     Properties:
-      # SNS Topic ARN
+
       TopicArn: !Ref SlackAlertsTopic
 
-      # Subscription protocol
-      # Target type is Lambda
       Protocol: lambda
 
-      # Lambda ARN to invoke
       Endpoint: !GetAtt SlackAlertLambda.Arn
+
+
+
 
   # =========================================================
   # Lambda Invoke Permission
   # =========================================================
-  # SNS cannot invoke Lambda automatically
-  # unless explicit permission is granted
   LambdaInvokePermission:
-    # AWS Lambda Permission resource type
+
     Type: AWS::Lambda::Permission
 
     Properties:
-      # Lambda function name
+
       FunctionName: !Ref SlackAlertLambda
 
-      # Allowed action
       Action: lambda:InvokeFunction
 
-      # AWS SNS service principal
       Principal: sns.amazonaws.com
 
-      # Restrict permission ONLY to this SNS topic
       SourceArn: !Ref SlackAlertsTopic
+
+
+
 
   # =========================================================
   # CloudWatch Alarm
   # =========================================================
-  # Monitors EC2 CPU Utilization
   HighCPUAlarm:
-    # AWS CloudWatch Alarm resource type
+
     Type: AWS::CloudWatch::Alarm
 
     Properties:
-      # Alarm name
+
       AlarmName: !Sub ${AWS::StackName}-high-cpu
 
-      # Alarm description
       AlarmDescription: EC2 CPU Utilization High
 
-      # AWS metric namespace
       Namespace: AWS/EC2
 
-      # Metric name
       MetricName: CPUUtilization
 
-      # Aggregation type
       Statistic: Average
 
-      # Evaluation period in seconds
-      # 300 = 5 minutes
       Period: 300
 
-      # Number of evaluation periods
       EvaluationPeriods: 3
 
-      # Alarm triggers if 2 datapoints breach threshold
       DatapointsToAlarm: 2
 
-      # CPU threshold
       Threshold: 80
 
-      # Trigger if metric exceeds threshold
       ComparisonOperator: GreaterThanThreshold
 
-      # Ignore missing datapoints
       TreatMissingData: ignore
 
-      # =====================================================
-      # EC2 Instance To Monitor
-      # =====================================================
       Dimensions:
+
         - Name: InstanceId
 
-          # pass EC2 instance ID as parameter
           Value: !Ref EC2InstanceId
 
-      # =====================================================
-      # SNS Action When Alarm Triggers
-      # =====================================================
+
       AlarmActions:
+
         - !Ref SlackAlertsTopic
 
-      # =====================================================
-      # SNS Action When Alarm Recovers
-      # =====================================================
+
       OKActions:
+
         - !Ref SlackAlertsTopic
 
+
+      Tags:
+
+        - Key: Project
+          Value: Monitoring
+
+        - Key: ManagedBy
+          Value: CloudFormation
+
+
+
+
 # =========================================================
-# Outputs Section
+# Outputs
 # =========================================================
-# Useful values after deployment
 Outputs:
-  # SNS Topic ARN output
+
+
   SNSArn:
+
     Description: SNS Topic ARN
 
     Value: !Ref SlackAlertsTopic
 
-  # Lambda ARN output
+
   LambdaArn:
+
     Description: Lambda Function ARN
 
     Value: !GetAtt SlackAlertLambda.Arn
 
-  # Alarm name output
+
   AlarmName:
+
     Description: CloudWatch Alarm Name
 
     Value: !Ref HighCPUAlarm
