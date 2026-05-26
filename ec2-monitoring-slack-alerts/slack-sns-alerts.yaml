@@ -363,7 +363,7 @@ Resources:
                                   type: 'mrkdwn',
 
                                   text:
-                                      `🔍 <${alarmLink}|View Alarm in AWS Console>`
+                                      `:mag: <${alarmLink}|View Alarm in AWS Console>`
                               }
                           }
                       ]
